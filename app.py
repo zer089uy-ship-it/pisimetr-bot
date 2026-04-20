@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import os
 import logging
+import asyncio
 from datetime import datetime
 from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
@@ -99,6 +100,12 @@ telegram_app.add_handler(CommandHandler("global_top", global_top))
 telegram_app.add_handler(CommandHandler("group_stats", group_stats))
 telegram_app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_member))
 
+# ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ (ВАЖНО!)
+async def init_app():
+    await telegram_app.initialize()
+    await telegram_app.start()
+    return telegram_app
+
 # ========== WEBHOOK ==========
 WEBHOOK_URL = "https://pisimetr-bot.onrender.com/webhook"
 
@@ -106,7 +113,8 @@ WEBHOOK_URL = "https://pisimetr-bot.onrender.com/webhook"
 def webhook():
     try:
         update = Update.de_json(request.get_json(force=True), telegram_app.bot)
-        asyncio.run(telegram_app.process_update(update))
+        # Используем create_task вместо run для асинхронности
+        asyncio.create_task(telegram_app.process_update(update))
         return jsonify({"status": "ok"})
     except Exception as e:
         logger.error(f"Webhook error: {e}")
@@ -122,10 +130,10 @@ def health():
 
 # ========== ЗАПУСК ==========
 if __name__ == '__main__':
-    import asyncio
-    
     # Установка webhook и команд
     async def setup():
+        await telegram_app.initialize()
+        await telegram_app.start()
         await telegram_app.bot.set_webhook(WEBHOOK_URL)
         commands_list = [BotCommand(cmd, desc) for cmd, desc in COMMANDS.items()]
         await telegram_app.bot.set_my_commands(commands_list)
@@ -136,4 +144,5 @@ if __name__ == '__main__':
     
     # Запуск Flask
     port = int(os.environ.get('PORT', 5000))
+    logger.info(f"🌐 Flask сервер на порту {port}")
     app.run(host='0.0.0.0', port=port)
