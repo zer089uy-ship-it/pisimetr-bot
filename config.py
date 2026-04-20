@@ -1,10 +1,7 @@
 import os
 
-# Токен берется из переменной окружения BOT_TOKEN на Render
-# Для локального запуска: создайте переменную или укажите токен ниже
-BOT_TOKEN = os.environ.get('BOT_TOKEN', "8730625454:AAFBDzXTVcC-aymhrG7Z5XZZ7O4Gm5JJspo")
+BOT_TOKEN = os.environ.get('BOT_TOKEN')
 
-# Команды бота
 COMMANDS = {
     "start": "Запустить бота",
     "pisi": "Увеличить Писю (рандом 0.2-5 см, раз в час)",
