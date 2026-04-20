@@ -5,6 +5,7 @@ import asyncio
 from datetime import datetime
 from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext._utils.defaultvalue import DefaultValue
 
 # НАСТРОЙКА
 logging.basicConfig(level=logging.INFO)
@@ -13,10 +14,10 @@ logger = logging.getLogger(__name__)
 # FLASK
 app = Flask(__name__)
 
-# ТОКЕН (ПРЯМО В КОДЕ - для простоты)
+# ТОКЕН (ПРЯМО В КОДЕ)
 BOT_TOKEN = "8730625454:AAFBDzXTVcC-aymhrG7Z5XZZ7O4Gm5JJspo"
 
-# КОМАНДЫ
+# КОМАНДЫ ДЛЯ МЕНЮ
 COMMANDS = {
     "start": "Запустить бота",
     "pisi": "Увеличить Писю (рандом 0.2-5 см, раз в час)",
@@ -92,6 +93,7 @@ async def handle_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 # ========== СОЗДАНИЕ ПРИЛОЖЕНИЯ TELEGRAM ==========
 telegram_app = Application.builder().token(BOT_TOKEN).build()
 
+# Регистрируем обработчики
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(CommandHandler("pisi", pisi))
 telegram_app.add_handler(CommandHandler("stats", stats))
@@ -123,18 +125,22 @@ def health():
 
 # ========== ЗАПУСК ==========
 if __name__ == '__main__':
-    # Устанавливаем вебхук
+    # Устанавливаем вебхук и команды
     async def setup():
+        # Устанавливаем webhook
         await telegram_app.bot.set_webhook(WEBHOOK_URL)
-        await telegram_app.bot.set_my_commands([
-            BotCommand(cmd, desc) for cmd, desc in COMMANDS.items()
-        ])
         logger.info(f"✅ Webhook установлен на {WEBHOOK_URL}")
+        
+        # Устанавливаем команды для меню
+        from telegram import BotCommand
+        commands_list = [BotCommand(cmd, desc) for cmd, desc in COMMANDS.items()]
+        await telegram_app.bot.set_my_commands(commands_list)
+        logger.info("✅ Команды бота установлены")
         logger.info("✅ Бот готов к работе!")
     
     asyncio.run(setup())
     
-    # Запускаем Flask
+    # Запускаем Flask сервер
     port = int(os.environ.get('PORT', 5000))
-    logger.info(f"🌐 Flask сервер на порту {port}")
+    logger.info(f"🌐 Flask сервер запущен на порту {port}")
     app.run(host='0.0.0.0', port=port)
