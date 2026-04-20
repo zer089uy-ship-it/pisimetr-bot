@@ -1,26 +1,35 @@
 from flask import Flask, request, jsonify
 import os
 import logging
+import asyncio
 from datetime import datetime
-from telegram import Update, Bot, WebhookConstants
+from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
+# НАСТРОЙКА
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# FLASK
 app = Flask(__name__)
 
+# ТОКЕН (ПРЯМО В КОДЕ - для простоты)
 BOT_TOKEN = "8730625454:AAFBDzXTVcC-aymhrG7Z5XZZ7O4Gm5JJspo"
-WEBHOOK_URL = "https://pisimetr-bot.onrender.com/webhook"
 
-from config import COMMANDS
+# КОМАНДЫ
+COMMANDS = {
+    "start": "Запустить бота",
+    "pisi": "Увеличить Писю (рандом 0.2-5 см, раз в час)",
+    "stats": "Моя статистика",
+    "top": "Топ чата",
+    "group_stats": "Статистика группы"
+}
+
+# ИМПОРТЫ БАЗЫ ДАННЫХ И СООБЩЕНИЙ
 from database import db
 from messages import *
 
-# Создаём приложение Telegram
-telegram_app = Application.builder().token(BOT_TOKEN).build()
-
-# ========== ОБРАБОТЧИКИ (те же самые) ==========
+# ========== ОБРАБОТЧИКИ КОМАНД ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     db.cursor.execute('''
@@ -80,7 +89,9 @@ async def handle_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         else:
             await update.message.reply_text(f"👋 Добро пожаловать, {member.first_name}! Используй /pisi!")
 
-# Регистрируем обработчики
+# ========== СОЗДАНИЕ ПРИЛОЖЕНИЯ TELEGRAM ==========
+telegram_app = Application.builder().token(BOT_TOKEN).build()
+
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(CommandHandler("pisi", pisi))
 telegram_app.add_handler(CommandHandler("stats", stats))
@@ -89,7 +100,9 @@ telegram_app.add_handler(CommandHandler("global_top", global_top))
 telegram_app.add_handler(CommandHandler("group_stats", group_stats))
 telegram_app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_member))
 
-# ========== WEBHOOK ENDPOINT ==========
+# ========== WEBHOOK ==========
+WEBHOOK_URL = "https://pisimetr-bot.onrender.com/webhook"
+
 @app.route('/webhook', methods=['POST'])
 async def webhook():
     try:
@@ -110,18 +123,18 @@ def health():
 
 # ========== ЗАПУСК ==========
 if __name__ == '__main__':
-    # Устанавливаем вебхук при старте
-    import asyncio
-    
-    async def set_webhook():
+    # Устанавливаем вебхук
+    async def setup():
         await telegram_app.bot.set_webhook(WEBHOOK_URL)
         await telegram_app.bot.set_my_commands([
             BotCommand(cmd, desc) for cmd, desc in COMMANDS.items()
         ])
         logger.info(f"✅ Webhook установлен на {WEBHOOK_URL}")
+        logger.info("✅ Бот готов к работе!")
     
-    asyncio.run(set_webhook())
+    asyncio.run(setup())
     
+    # Запускаем Flask
     port = int(os.environ.get('PORT', 5000))
-    logger.info(f"🌐 Flask сервер запущен на порту {port}")
+    logger.info(f"🌐 Flask сервер на порту {port}")
     app.run(host='0.0.0.0', port=port)
