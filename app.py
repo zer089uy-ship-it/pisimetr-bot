@@ -1,32 +1,26 @@
-from flask import Flask
-import threading
+from flask import Flask, request, jsonify
 import os
 import logging
 from datetime import datetime
-from telegram import Update, BotCommand
+from telegram import Update, Bot, WebhookConstants
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
-# НАСТРОЙКА ЛОГИРОВАНИЯ
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# FLASK
 app = Flask(__name__)
 
-# ИМПОРТ КОНФИГА (токен берётся из переменной окружения)
-from config import BOT_TOKEN, COMMANDS
+BOT_TOKEN = "8730625454:AAFBDzXTVcC-aymhrG7Z5XZZ7O4Gm5JJspo"
+WEBHOOK_URL = "https://pisimetr-bot.onrender.com/webhook"
 
-# ПРОВЕРКА ТОКЕНА
-if not BOT_TOKEN:
-    logger.warning("⚠️ BOT_TOKEN не найден в переменных, но будет использован запасной вариант из config.py")
-
-logger.info(f"✅ BOT_TOKEN загружен (первые 10 символов: {BOT_TOKEN[:10]}...)")
-
-# ИМПОРТ ОСТАЛЬНЫХ МОДУЛЕЙ
+from config import COMMANDS
 from database import db
 from messages import *
 
-# ========== ОБРАБОТЧИКИ КОМАНД ==========
+# Создаём приложение Telegram
+telegram_app = Application.builder().token(BOT_TOKEN).build()
+
+# ========== ОБРАБОТЧИКИ (те же самые) ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     db.cursor.execute('''
@@ -86,36 +80,26 @@ async def handle_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         else:
             await update.message.reply_text(f"👋 Добро пожаловать, {member.first_name}! Используй /pisi!")
 
-# ========== ЗАПУСК ТЕЛЕГРАМ БОТА ==========
-def run_telegram_bot():
-    """Запуск Telegram бота"""
-    logger.info("🚀 Запускаем Telegram бота...")
-    
-    application = Application.builder().token(BOT_TOKEN).build()
-    
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("pisi", pisi))
-    application.add_handler(CommandHandler("stats", stats))
-    application.add_handler(CommandHandler("top", top))
-    application.add_handler(CommandHandler("global_top", global_top))
-    application.add_handler(CommandHandler("group_stats", group_stats))
-    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_member))
-    
-    async def set_commands():
-        await application.bot.set_my_commands([
-            BotCommand(cmd, desc) for cmd, desc in COMMANDS.items()
-        ])
-        logger.info("✅ Команды бота установлены")
-    
-    import asyncio
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(set_commands())
-    
-    logger.info("✅ Telegram бот запущен и ждёт команды!")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+# Регистрируем обработчики
+telegram_app.add_handler(CommandHandler("start", start))
+telegram_app.add_handler(CommandHandler("pisi", pisi))
+telegram_app.add_handler(CommandHandler("stats", stats))
+telegram_app.add_handler(CommandHandler("top", top))
+telegram_app.add_handler(CommandHandler("global_top", global_top))
+telegram_app.add_handler(CommandHandler("group_stats", group_stats))
+telegram_app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_member))
 
-# ========== FLASK МАРШРУТЫ ==========
+# ========== WEBHOOK ENDPOINT ==========
+@app.route('/webhook', methods=['POST'])
+async def webhook():
+    try:
+        update = Update.de_json(request.get_json(force=True), telegram_app.bot)
+        await telegram_app.process_update(update)
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return jsonify({"status": "error"}), 500
+
 @app.route('/')
 def home():
     return "🍆 ПиСиметр бот работает! 🍆"
@@ -126,11 +110,18 @@ def health():
 
 # ========== ЗАПУСК ==========
 if __name__ == '__main__':
-    # Запускаем Telegram бота в отдельном потоке
-    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
-    bot_thread.start()
+    # Устанавливаем вебхук при старте
+    import asyncio
     
-    # Запускаем Flask сервер
+    async def set_webhook():
+        await telegram_app.bot.set_webhook(WEBHOOK_URL)
+        await telegram_app.bot.set_my_commands([
+            BotCommand(cmd, desc) for cmd, desc in COMMANDS.items()
+        ])
+        logger.info(f"✅ Webhook установлен на {WEBHOOK_URL}")
+    
+    asyncio.run(set_webhook())
+    
     port = int(os.environ.get('PORT', 5000))
     logger.info(f"🌐 Flask сервер запущен на порту {port}")
     app.run(host='0.0.0.0', port=port)
