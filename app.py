@@ -1,23 +1,21 @@
 from flask import Flask, request, jsonify
 import os
 import logging
-import asyncio
 from datetime import datetime
-from telegram import Update, Bot
+from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
-from telegram.ext._utils.defaultvalue import DefaultValue
 
-# НАСТРОЙКА
+# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# FLASK
+# Flask
 app = Flask(__name__)
 
-# ТОКЕН (ПРЯМО В КОДЕ)
+# Токен бота
 BOT_TOKEN = "8730625454:AAFBDzXTVcC-aymhrG7Z5XZZ7O4Gm5JJspo"
 
-# КОМАНДЫ ДЛЯ МЕНЮ
+# Команды
 COMMANDS = {
     "start": "Запустить бота",
     "pisi": "Увеличить Писю (рандом 0.2-5 см, раз в час)",
@@ -26,11 +24,11 @@ COMMANDS = {
     "group_stats": "Статистика группы"
 }
 
-# ИМПОРТЫ БАЗЫ ДАННЫХ И СООБЩЕНИЙ
+# Импорт базы данных и сообщений
 from database import db
 from messages import *
 
-# ========== ОБРАБОТЧИКИ КОМАНД ==========
+# ========== ОБРАБОТЧИКИ ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     db.cursor.execute('''
@@ -90,10 +88,9 @@ async def handle_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         else:
             await update.message.reply_text(f"👋 Добро пожаловать, {member.first_name}! Используй /pisi!")
 
-# ========== СОЗДАНИЕ ПРИЛОЖЕНИЯ TELEGRAM ==========
+# ========== СОЗДАНИЕ БОТА ==========
 telegram_app = Application.builder().token(BOT_TOKEN).build()
 
-# Регистрируем обработчики
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(CommandHandler("pisi", pisi))
 telegram_app.add_handler(CommandHandler("stats", stats))
@@ -106,10 +103,10 @@ telegram_app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, h
 WEBHOOK_URL = "https://pisimetr-bot.onrender.com/webhook"
 
 @app.route('/webhook', methods=['POST'])
-async def webhook():
+def webhook():
     try:
         update = Update.de_json(request.get_json(force=True), telegram_app.bot)
-        await telegram_app.process_update(update)
+        asyncio.run(telegram_app.process_update(update))
         return jsonify({"status": "ok"})
     except Exception as e:
         logger.error(f"Webhook error: {e}")
@@ -125,22 +122,18 @@ def health():
 
 # ========== ЗАПУСК ==========
 if __name__ == '__main__':
-    # Устанавливаем вебхук и команды
+    import asyncio
+    
+    # Установка webhook и команд
     async def setup():
-        # Устанавливаем webhook
         await telegram_app.bot.set_webhook(WEBHOOK_URL)
-        logger.info(f"✅ Webhook установлен на {WEBHOOK_URL}")
-        
-        # Устанавливаем команды для меню
-        from telegram import BotCommand
         commands_list = [BotCommand(cmd, desc) for cmd, desc in COMMANDS.items()]
         await telegram_app.bot.set_my_commands(commands_list)
-        logger.info("✅ Команды бота установлены")
-        logger.info("✅ Бот готов к работе!")
+        logger.info(f"✅ Webhook: {WEBHOOK_URL}")
+        logger.info("✅ Бот готов!")
     
     asyncio.run(setup())
     
-    # Запускаем Flask сервер
+    # Запуск Flask
     port = int(os.environ.get('PORT', 5000))
-    logger.info(f"🌐 Flask сервер запущен на порту {port}")
     app.run(host='0.0.0.0', port=port)
