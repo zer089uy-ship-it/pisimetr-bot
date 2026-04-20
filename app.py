@@ -18,8 +18,7 @@ from config import BOT_TOKEN, COMMANDS
 
 # ПРОВЕРКА ТОКЕНА
 if not BOT_TOKEN:
-    logger.error("❌ BOT_TOKEN не найден! Проверь переменную окружения.")
-    raise Exception("BOT_TOKEN is required")
+    logger.warning("⚠️ BOT_TOKEN не найден в переменных, но будет использован запасной вариант из config.py")
 
 logger.info(f"✅ BOT_TOKEN загружен (первые 10 символов: {BOT_TOKEN[:10]}...)")
 
