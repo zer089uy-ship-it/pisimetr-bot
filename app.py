@@ -15,83 +15,70 @@ BOT_TOKEN = "8730625454:AAFBDzXTVcC-aymhrG7Z5XZZ7O4Gm5JJspo"
 
 COMMANDS = {
     "start": "Запустить бота",
-    "pisi": "Увеличить Писю (рандом 0.2-5 см, раз в час)",
+    "pisi": "Увеличить Писю",
     "stats": "Моя статистика",
     "top": "Топ чата",
-    "group_stats": "Статистика группы"
 }
 
 from database import db
 from messages import *
 
+# ========== ВРЕМЕННЫЕ ОБРАБОТЧИКИ С ЛОГАМИ ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user = update.effective_user
-    db.cursor.execute('''
-        INSERT OR IGNORE INTO users (user_id, username, first_name, last_name, join_date)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (user.id, user.username, user.first_name, user.last_name, datetime.now().isoformat()))
-    db.conn.commit()
-    await update.message.reply_text(get_welcome_message(user.first_name))
+    logger.info(f"🔥🔥🔥 ПОЛУЧЕНА КОМАНДА /start от {update.effective_user.first_name} 🔥🔥🔥")
+    try:
+        user = update.effective_user
+        await update.message.reply_text("✅ Бот работает! Команда /start получена. Привет, " + user.first_name + "!")
+        logger.info("✅ Ответ на /start отправлен")
+    except Exception as e:
+        logger.error(f"❌ Ошибка в start: {e}")
 
 async def pisi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user = update.effective_user
-    chat = update.effective_chat
-    
-    can_use, wait_seconds = db.can_use(user.id, chat.id)
-    if not can_use:
-        await update.message.reply_text(get_cooldown_message(wait_seconds))
-        return
-    
-    user_data = db.add_cm(user.id, chat.id, user.username, user.first_name, user.last_name)
-    
-    top_users = db.get_group_top(chat.id, 10)
-    position = None
-    for i, u in enumerate(top_users, 1):
-        if u[0] == user.id:
-            position = i
-            break
-    
-    await update.message.reply_text(get_pisi_success(user_data, position))
+    logger.info(f"🔥🔥🔥 ПОЛУЧЕНА КОМАНДА /pisi от {update.effective_user.first_name} 🔥🔥🔥")
+    try:
+        await update.message.reply_text("🍆 Команда /pisi получена! Сейчас добавлю сантиметры...")
+        
+        user = update.effective_user
+        chat = update.effective_chat
+        
+        can_use, wait_seconds = db.can_use(user.id, chat.id)
+        if not can_use:
+            await update.message.reply_text(f"⏳ Подожди {wait_seconds} секунд до следующего раза")
+            return
+        
+        user_data = db.add_cm(user.id, chat.id, user.username, user.first_name, user.last_name)
+        await update.message.reply_text(f"🍆 +{user_data['growth_cm']} см! Всего: {user_data['total_cm']} см")
+        logger.info(f"✅ Добавлено {user_data['growth_cm']} см пользователю {user.first_name}")
+    except Exception as e:
+        logger.error(f"❌ Ошибка в pisi: {e}")
+        await update.message.reply_text(f"❌ Ошибка: {str(e)}")
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user = update.effective_user
-    user_stats = db.get_user_stats(user.id)
-    await update.message.reply_text(get_stats_message(user_stats))
+    logger.info(f"🔥 ПОЛУЧЕНА КОМАНДА /stats от {update.effective_user.first_name}")
+    try:
+        user = update.effective_user
+        user_stats = db.get_user_stats(user.id)
+        await update.message.reply_text(f"📊 Твоя статистика: {user_stats['total_cm']} см, использований: {user_stats['total_uses']}")
+    except Exception as e:
+        logger.error(f"❌ Ошибка в stats: {e}")
 
 async def top(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    chat = update.effective_chat
-    chat_title = chat.title if chat.title else "этом чате"
-    top_users = db.get_group_top(chat.id, 10)
-    await update.message.reply_text(get_top_message(top_users, chat_title))
-
-async def global_top(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    global_top_users = db.get_global_top(10)
-    await update.message.reply_text(get_top_message(global_top_users, "МИРЕ"))
-
-async def group_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    chat = update.effective_chat
-    chat_title = chat.title if chat.title else "Этом чате"
-    stats_data = db.get_group_stats(chat.id)
-    await update.message.reply_text(get_group_stats_message(stats_data, chat_title))
+    logger.info(f"🔥 ПОЛУЧЕНА КОМАНДА /top от {update.effective_user.first_name}")
+    try:
+        await update.message.reply_text("🏆 Топ скоро появится...")
+    except Exception as e:
+        logger.error(f"❌ Ошибка в top: {e}")
 
 async def handle_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    for member in update.message.new_chat_members:
-        if member.id == context.bot.id:
-            await update.message.reply_text(
-                "🍆 ПиСиметр активирован! 🍆\n\nИспользуйте /pisi раз в час!\n/top — топ чата\n/stats — моя статистика"
-            )
-        else:
-            await update.message.reply_text(f"👋 Добро пожаловать, {member.first_name}! Используй /pisi!")
+    pass
 
+# ========== СОЗДАНИЕ БОТА ==========
 telegram_app = Application.builder().token(BOT_TOKEN).build()
 
 telegram_app.add_handler(CommandHandler("start", start))
 telegram_app.add_handler(CommandHandler("pisi", pisi))
 telegram_app.add_handler(CommandHandler("stats", stats))
 telegram_app.add_handler(CommandHandler("top", top))
-telegram_app.add_handler(CommandHandler("global_top", global_top))
-telegram_app.add_handler(CommandHandler("group_stats", group_stats))
-telegram_app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_member))
 
 loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
